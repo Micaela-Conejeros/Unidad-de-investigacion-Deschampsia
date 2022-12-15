@@ -1,0 +1,65 @@
+#Script de corrección taxonómica, base de datos proveniente de GBIF
+#Genero: Deschampsia 
+
+#Directorio de trabajo
+setwd("C:/Users/micac/Desktop/PROYECTO Deschampsia/genus_deschampsia_data/a_taxonomy") 
+
+#Leer el csv, sep es para la separacion de las columnas (tab)----
+desch <- read.csv("0025771-220831081235567.csv", sep = "\t")  # desch es el nombre que se le otorga al "objeto" osea al csv
+dim(desch)  # numero de datos de desch
+
+#COSAS PARA ELIMINAR----
+unique(desch$species)  # para ver los valores únicos de "species"
+
+#Eliminar rangos taxonómicos no deseados
+#desch2<-desch[!desch$taxonRank=="GENUS",]  # crea el desch 2, y elimina la categoría de GENERO
+desch2 <- desch[desch$taxonRank == "SPECIES",]
+unique(desch2$taxonRank)
+
+#CORRECCION TAXONOMICA----
+desch2 <- desch2[!desch2$species == "PRESERVED_SPECIMEN",]  # !negación, todos excepto ese
+desch2 <- desch2[!desch2$species == "Deschampsia micrantha",]  # Ambiguous
+desch2 <- desch2[!desch2$species == "Deschampsia santamartensis",]  # Unchecked
+unique(desch2$species)
+
+desch2$species <- as.character(desch2$species)  # transforma la columan species en un vector de caracteres
+desch2$species <- gsub("Deschampsia cordilleranum","Deschampsia cordillerarum",desch2$species)  # corregir el nombre que estaba mal ingresado
+desch2$species <- gsub("Deschampsia australis","Deschampsia nubigena",desch2$species)  # Synonym of Deschampsia nubigena Hillebr.
+desch2$species <- gsub("Deschampsia bottnica × cespitosa","Deschampsia cespitosa",desch2$species)  # Synonym of Deschampsia cespitosa (L.) P.Beauv.
+
+table(desch2$species)  # tabla con los registros por especie 
+head(desch2)
+
+#Eliminar base del registro extra
+unique(desch2$basisOfRecord)
+desch2 <- desch2[desch2$basisOfRecord == c("HUMAN_OBSERVATION","PRESERVED_SPECIMEN"),]
+dim(desch2)
+
+write.csv(desch2,"occ_sp_desch.csv")  # crea el archivo con las ocurrencias 
+
+unique(desch2$species)  # valores unicos de especies
+dim(desch2)  # numero de datos de desch2
+occ_number <- table(desch2$species)  # crea el objeto occ_number, con los datos de las especies de desch2, osea sin eliminadas y las que estan categorizadas solo con genero
+write.csv(occ_number,"occ_number.csv")  # escribe los datos de occ_number
+str(desch2)
+
+#INFORMACION DE SUBESPECIES (se pierden mas datos eliminando la especie)---- 
+#las subespecies deben incluirse al rango taxonómico ESPECIE
+#unique(desch2$infraspecificEpithet)
+#desch2$newname<-paste(desch2$species,desch2$infraspecificEpithet, sep=" ") #crea nueva columna llamada "newname" que UNE las columnas species y infraspecificEpithet separados por un espacio
+#unique(desch2$newname)
+#subspp_n<-table(desch2$newname)
+#write.csv(subspp_n,"subspp.csv")
+
+#desch3<-desch2[!desch2$newname=="Deschampsia atropurpurea ",]  # 1930 registros
+#desch3<-desch3[!desch2$newname=="Deschampsia cespitosa ",]  # 136734 registros
+#desch3<-desch3[!desch2$newname=="Deschampsia danthonioides ",]  # 830 registros
+#desch3<-desch3[!desch2$newname=="Deschampsia looseriana ",]  # 3 registros
+#desch3<-desch3[!desch2$newname=="Deschampsia media ",]  # 824 registros
+#desch3<-desch3[!desch2$newname=="Deschampsia setacea ",]  # 2152 registros
+#subspp_cl<-table(desch3$newname)
+#write.csv(subspp_cl,"subspp_cl.csv")
+
+
+
+
