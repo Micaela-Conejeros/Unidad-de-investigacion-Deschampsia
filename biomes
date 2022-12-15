@@ -1,0 +1,75 @@
+
+### Library----
+library(maptools)
+library(rgdal)
+library(sp)
+library(plyr)
+library(dplyr)
+
+#directorio de trabajo
+setwd("C:/Users/micac/Desktop/PROYECTO Deschampsia/genus_deschampsia_data/c_biomes")
+
+####Biomes----
+##data from https://www.arcgis.com/home/item.html?id=320de51a0e434fe7afb1415b159b894a
+#shape=readOGR("D:/store/worldclim/biomes", layer="Biomes")
+shape=readOGR(dsn="C:/Users/micac/Desktop/PROYECTO Deschampsia/genus_deschampsia_data/c_biomes/20mingis_biomes2/data/Biomes",layer="Biomes")
+
+bio_desch <- read.csv("clean_data_desch.csv")
+head(bio_desch)
+summary(bio_desch$decimalLongitude)
+bio_temp <- bio_desch[,c("species","decimalLongitude","decimalLatitude")]
+
+pts <- SpatialPoints(cbind(bio_temp$decimalLongitude, bio_temp$decimalLatitude),
+                     proj4string = CRS(proj4string(shape)))
+
+temp <- pts %over% shape
+temp2 <- cbind(bio_temp,temp) #bind para pegar
+head(temp2)
+
+temp3 <- cbind(bio_desch,temp)
+head(temp3)
+
+summary(as.factor(temp3$BIOME_DESC))
+
+
+###Bioclim----
+
+#library
+library(ncdf4)
+library(raster)
+library(maps)
+
+#Agregar las 19 variables ambientales
+bioclim_world <- stack(list.files("C:/Users/micac/Desktop/PROYECTO Deschampsia/worldclim/worldclim datos",
+                                  pattern ="bio_", full.names=T))  
+
+bioclim_values <- raster::extract(bioclim_world, temp3[,c("decimalLongitude", "decimalLatitude")])
+head(bioclim_values)
+
+# variables are ordered bio 1, 10, 11, 12... 
+colnames(bioclim_values) <- c("MAT","MTWarmQuarter","MTColdQuarter","MAP",
+                              "ppwetmonth","ppdrymonth","ppseas","ppwetquarter",
+                              "ppdryqua","ppwarmqua","ppcoldqua","DiurnalRange",
+                              "Isothermality","TSeasonality","MaxTWarmMonth",
+                              "MinTeColdestMonth","Tannualrange","MTWetQuarter",
+                              "MTDryQuarter")
+
+biome_bioclim <- cbind(temp3,bioclim_values)
+head(biome_bioclim)
+dim(biome_bioclim)
+
+
+#Dejar variables de interes 
+desch_biome_temp<- biome_bioclim[,c("species", "decimalLongitude", "decimalLatitude", 
+                                    "BIOME_DESC",
+                                    "MAT","MTWarmQuarter","MTColdQuarter","MAP",
+                                    "ppwetmonth","ppdrymonth","ppseas","ppwetquarter",
+                                    "ppdryqua","ppwarmqua","ppcoldqua","DiurnalRange",
+                                    "Isothermality","TSeasonality","MaxTWarmMonth",
+                                    "MinTeColdestMonth","Tannualrange","MTWetQuarter",
+                                    "MTDryQuarter")
+                                 ]
+
+#esribir base de datos final para el grafico
+write.csv(desch_biome_temp, "desch_biome_bioclim.csv")
+
