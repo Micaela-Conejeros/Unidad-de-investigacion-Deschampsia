@@ -1,0 +1,192 @@
+#Script de Limpieza de datos 
+#Genero: Deschampsia 
+
+#Library----
+library(rgbif)
+library(tidyverse)
+library (dplyr)
+library(rgdal)
+library(rgeos)
+library(sp)
+library(countrycode)
+library(CoordinateCleaner)
+library(maps)
+library(biogeo)
+
+#Directorio de trabajo
+setwd("C:/Users/micac/Desktop/PROYECTO Deschampsia/genus_deschampsia_data/b_cleaning") 
+data2clean <- read.csv("occ_sp_desch.csv")
+
+# Seleccionar las columnas que importan para la limpieza
+colnames(data2clean)#reemplazarlo
+class(data2clean)
+species_occurrences <- data2clean[,c("species", "genus", "family", "taxonRank", 
+                                     "decimalLongitude", "decimalLatitude", 
+                                     "countryCode", "gbifID", "individualCount", 
+                                     "coordinateUncertaintyInMeters", "year", 
+                                     "basisOfRecord", "institutionCode")
+                                  ]
+# ver registros en el mapa
+# hgd()
+# hgd_browse() #Estas funciones (paquete httpgd) son para ver los plots en el navegador 
+
+wm <- borders("world", colour="gray50", fill="gray50")
+ggplot()+ coord_fixed()+ wm +
+  geom_point(data = species_occurrences, aes(x = decimalLongitude, y = decimalLatitude),
+             colour = "#1bf108", size = 1)+
+  theme_bw()
+
+### LIMPIEZA DE DATOS ###----
+# crear un objeto para limpiar
+# limpieza general
+colnames(species_occurrences)
+species_occurrences<-species_occurrences[complete.cases(species_occurrences[, 5:6]),]
+
+flags <- clean_coordinates(x = species_occurrences, lon = "decimalLongitude", lat = "decimalLatitude",
+                           species = "species",
+                           tests = c("capitals", "centroids", "equal","gbif","institutions",
+                                     "zeros"),
+                           seas_ref = buffland)  # most test are on by default
+
+# Excluir datos problemáticos
+dat_cl1 <- species_occurrences[flags$.summary,]
+# vamos marcando el objeto dat_cl con números para registrar los pasos de limpieza
+
+# remover occurrencias con baja precision (menor a 30 km) pero mantener aquellas sin informacion de precision porque pueden ser la mayoria
+hist(dat_cl1$coordinateUncertaintyInMeters/1000, breaks = 30)
+dat_cl2 <- dat_cl1 %>%
+  filter(coordinateUncertaintyInMeters/1000 <= 30 | is.na(coordinateUncertaintyInMeters))
+summary(dat_cl2$coordinateUncertaintyInMeters)
+
+
+# Remover aquellas que tiene conteos menores que 1. Las ocurrencias con muchos conteos no son problematicas.
+table(dat_cl2$individualCount)
+dat_cl3 <- dat_cl2%>%
+  filter(individualCount > 0 | is.na(individualCount))%>%
+  filter(individualCount < 99 | is.na(individualCount))
+
+# remover ocurrencias mas antiguas que 1945 porque pueden tener probemas de precision.
+summary(dat_cl3$year)
+dat_cl4 <- dat_cl3%>%
+  filter(year > 1945 | is.na(individualCount)) 
+
+# Asegurarse que todos los registros correpsondan a especies si ese es el taxon que se esta colectando. O genero si es lo que corresponde.
+#table(dat_cl4$taxonRank) 
+#dat_cl5 <- dat_cl4%>%
+  #filter(taxonRank == "SPECIES" | is.na(taxonRank))
+
+# Calcular el porcentaje de ocurrencias excluidas
+round((nrow(data2clean) - nrow(dat_cl4)) / nrow(data2clean) * 100, 0)
+
+
+### EXCLUIR OUTLIERS ESPACIALES Y AMBIENTALES ###----
+# outliers espaciales se eliminan con la funcion "cc_outl" del paquete CoordinateCleaner
+outl <- cc_outl(dat_cl4, lon="decimalLongitude",lat="decimalLatitude", species="species", value = "flagged")
+summary(outl)
+dat_cl5 <- dat_cl4[outl=="TRUE", ]
+
+#remover ocurrencias duplicadas
+nrow(dat_cl5)
+dat_cl6 <- cc_dupl(dat_cl5, lon="decimalLongitude",lat="decimalLatitude", species="species")
+write.csv(dat_cl6, "desch_occ_cl6.csv")
+
+## Remover los outliers ambientales, siguiendo Chapman 2005 https://www.gbif.org/document/80528/principles-and-methods-of-data-cleaning-primary-species-and-species-occurrence-data
+
+##Environmental variables
+library(ncdf4)
+library(raster)
+library(maps)
+
+##worldclim, CWD
+
+###  aqui tienes que descargar los datos de worldclim y redirigir a donde tengas la carpeta bio  
+#bioclim_world <- stack(list.files("/home/ricardo/bio_30s_esri/bio",pattern ="bio_", full.names=T))
+bioclim_world <- stack(list.files("C:/Users/micac/Desktop/PROYECTO Deschampsia/worldclim/worldclim datos",
+                                  pattern ="bio_", full.names=T))  
+
+bioclim_values <- raster::extract(bioclim_world, dat_cl6[,c("decimalLongitude", "decimalLatitude")])
+head(bioclim_values)
+
+# variables are ordered bio 1, 10, 11, 12... 
+colnames(bioclim_values) <- c("MAT","MTWarmQuarter","MTColdQuarter","MAP",
+                              "ppwetmonth","ppdrymonth","ppseas","ppwetquarter",
+                              "ppdryqua","ppwarmqua","ppcoldqua","DiurnalRange",
+                              "Isothermality","TSeasonality","MaxTWarmMonth",
+                              "MinTeColdestMonth","Tannualrange","MTWetQuarter",
+                              "MTDryQuarter")
+
+dat_cl_env <- cbind(dat_cl6,bioclim_values)
+head(dat_cl_env)
+dim(dat_cl_env)
+
+##Detecting environmental outliers
+dat_cl_env<-read.csv("desch_occ_cl6.csv")
+
+dups<-rep(0,752) # largo tabla de ocurrencias
+rid<-1:length(rownames(dat_cl_env))
+
+MAT <- outliers(rid, dat_cl_env$species, dups, dat_cl_env$MAT)
+MAP <- outliers(rid, dat_cl_env$species, dups, dat_cl_env$MAP)
+MaxWM <- outliers(rid, dat_cl_env$species, dups, dat_cl_env$MaxTWarmMonth)
+MinCM <- outliers(rid, dat_cl_env$species, dups, dat_cl_env$MinTeColdestMonth)
+ppdrym <- outliers(rid, dat_cl_env$species, dups, dat_cl_env$ppdrymonth)
+ppwetmonth <- outliers(rid, dat_cl_env$species, dups, dat_cl_env$ppwetmonth)
+
+MAT <- as.data.frame(MAT)
+MAP <- as.data.frame(MAP)
+MaxWM <- as.data.frame(MaxWM)
+MinCM <- as.data.frame(MinCM)
+ppdrym <- as.data.frame(ppdrym)
+ppwetmonth <- as.data.frame(ppwetmonth)
+
+outsMAT <- as.character(MAT$ee2)
+outsMAP <- as.character(MAP$ee2)
+outsMaxWM <- as.character(MaxWM$ee2)
+outsMinCM <- as.character(MinCM$ee2)
+outsppdrym <- as.character(ppdrym$ee2)
+outsppwetmonth <- as.character(ppwetmonth$ee2)
+
+dat_cl_env2 <- cbind(dat_cl_env,outsMAT,outsMAP,outsMaxWM,outsMinCM,outsppwetmonth)
+head(dat_cl_env2)
+dat_cl_env2$outsppdrym <- "0"
+
+dat_cl_env3 <- dat_cl_env2[c("outsMAT","outsMAP","outsMaxWM","outsMinCM","outsppdrym","outsppwetmonth")]
+
+dat_cl_env3 <- data.matrix(dat_cl_env3)
+dat_cl_env3 <- dat_cl_env3-1
+head(dat_cl_env3)
+
+out_total <- apply(dat_cl_env3,1,sum)
+dat_cl_env2_outs <- cbind(dat_cl_env2,out_total)
+
+##I will remove those ocuurences with two or more outliers ... following serra diaz 20%
+
+dat_cl_env4 <- dat_cl_env2_outs[!dat_cl_env2_outs$out_total>=2,]
+dim(dat_cl_env2_outs)
+dim(dat_cl_env4)
+names(dat_cl_env4)
+dat_cl_env4 <- dat_cl_env4[,-c(34:40)]
+head(dat_cl_env4)
+write.csv(dat_cl_env4,"desch_occ_clean.csv")
+
+dat <- read.csv("desch_occ_clean.csv")
+str(dat)
+spp<-dat$species
+sort(spp, decreasing = TRUE)
+head(dat)
+levels(as.factor(dat$species))
+spp1 <- tapply(spp,spp,length)
+sort(spp1, decreasing = TRUE)
+mean(spp1)
+
+write.csv(spp1, "final_occ_clean.csv")
+
+dat <- dat_cl_env4[,c("species", "taxonRank", "decimalLongitude", "decimalLatitude", 
+                                     "countryCode", "gbifID", "individualCount", 
+                                     "coordinateUncertaintyInMeters", "year", 
+                                     "basisOfRecord", "institutionCode")
+                  ]
+
+head(dat_clean)
+write.csv(dat , "clean_data_desch.csv")
+
