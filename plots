@@ -1,0 +1,118 @@
+#GRAFICOS
+
+# library
+library(ggridges)
+library(ggplot2)
+library(viridis)
+library(hrbrthemes)
+library(rgbif)
+
+
+#directorio de trabajo
+setwd("C:/Users/micac/Desktop/PROYECTO Deschampsia/genus_deschampsia_data/d_plots")
+data_plot <- read.csv("desch_biome_bioclim.csv")
+
+data_plot <- data_plot [ complete.cases(data_plot),]  # Elinima NA´s
+head(data_plot)
+str(data_plot)
+
+summary (as.factor(data_plot$BIOME_DESC))
+unique(data_plot$BIOME_DESC)
+
+data_plot <- data_plot[!data_plot$species == "Deschampsia cespitosa",]  # Borra una FILA 
+data_plot <- data_plot[!data_plot$BIOME_DESC == "Lake",]
+data_plot <- data_plot[!data_plot$BIOME_DESC == "Rock and Ice",]
+
+### MAT & BIOME PLOT----
+#plot de BIOMAS y temperatura media anual
+
+#limites del grafico
+data_plot <- data_plot[!data_plot$MAT > 20,]
+data_plot <- data_plot[!data_plot$MAT < (-15),]
+
+######paleta de color----
+#crear paleta de colores
+color.palette <- c("#7FFFD4", "#0000FF", "#FF4040", "#00FFFF",
+                   "#76EE00", "#EE7621", "#FF1493", "#FFB90F",
+                   "#B23AEE", "#FFB6C1")
+
+names(color.palette) <- levels(data_plot$BIOME_DESC) # vincular colores
+
+###PLOT
+ggplot(data_plot, aes(x= MAT, y= reorder(species,MAT,mean), fill = BIOME_DESC))+
+  geom_density_ridges(show.legend = FALSE)  +
+  scale_fill_manual(values= color.palette) +
+  labs(title = "Temperatura Media Anual asociado a los Biomas",
+       x = "Temperatura media anual", y = "Especies", fill= "Biomas") +
+  theme_bw()+
+  theme(title = element_text(size = 14),
+        axis.text.x = element_text(size=10),
+        axis.text.y = element_text(size=12),
+        axis.title.x = element_text(size=12),
+        axis.title.y = element_text(size=12),
+        legend.text = element_text(size=12),        
+        legend.title = element_text(size=12),
+        legend.position=c(0.5, 0.1)
+        )
+        
+    
+png(file="img/MAT.png", width = 1200, height = 800)  # Tenga en cuenta que png() utiliza valores de píxeles para la anchura y la altura
+ggplot(data_plot, aes(x= MAT, y= reorder(species,MAT,mean), fill = BIOME_DESC))+
+  geom_density_ridges(show.legend = TRUE)  +
+  scale_fill_manual(values= color.palette) +
+  labs(title = "Temperatura Media Anual asociado a los Biomas",
+       x = "Temperatura media anual", y = "Especies", fill= "Biomas") +
+  theme_bw()+
+  theme(title = element_text(size = 16),
+        axis.text.x = element_text(size=12),
+        axis.text.y = element_text(size=14),
+        axis.title.x = element_text(size=14),
+        axis.title.y = element_text(size=14),
+        legend.text = element_text(size=14),        
+        legend.title = element_text(size=14),
+        )
+
+dev.off()
+
+### MAP PLOT----
+summary (as.factor(data_plot$species))
+unique(data_plot$species)
+species_plot <- data_plot[,c("species", "decimalLongitude", "decimalLatitude" )]
+
+#crear paleta de colores
+color.palette1 <- c("#7FFFD4", "#0000FF", "#FF4040", "#00FFFF", "#F0FFFF",
+                   "#76EE00", "#EE7621", "#FF1493", "#FFB90F", "#EE7621",
+                   "#B23AEE", "#FFB6C1", "#008B8B", "#9932CC", "#698B69",
+                   "#8B0A50", "#1E90FF", "#FFD700", "#00CD00", "#FF6A6A",
+                   "#BFEFFF", "#FF00FF", "#AB82FF", "#C0FF3E", "#030303",
+                   "#FFB6C1")
+
+names(color.palette1) <- levels(species_plot$species) # vincular colores
+
+#plot                     
+wm <- borders("world", colour="gray50", fill="gray50")
+
+ggplot()+ coord_fixed()+ wm +
+  geom_point(data = species_plot, aes(x = decimalLongitude, y = decimalLatitude, colour= species),
+             size = 1) + 
+  scale_colour_manual(values= color.palette1) +
+  labs(title = "Distribución Global de Deschampsia",
+       x = "Longitud", y = "Latitud") +
+  geom_smooth() +  
+  facet_grid(~ species)+
+  theme_bw()
+
+
+#para guardar los graficos en pdf 
+pdf(file="img/global distribution.pdf",  width = 70.00, height = 10.00)
+ggplot()+ coord_fixed()+ wm +
+  geom_point(data = species_plot, aes(x = decimalLongitude, y = decimalLatitude, colour= species),
+             size = 1) + 
+  scale_colour_manual(values= color.palette1) +
+  labs(title = "Distribución Global de Deschampsia",
+       x = "Longitud", y = "Latitud") +
+  geom_smooth() +  
+  facet_grid(~ species)+
+  theme_bw()
+dev.off()
+
